@@ -42,7 +42,7 @@ fn fixed_width_big_integers_preserve_twos_complement_bytes() {
         decoder.finish().unwrap();
     }
 
-    round_trip(&I128::NEG_ONE, 16);
+    round_trip(&I128::try_from(-1_i8).unwrap(), 16);
     round_trip(&I256::MIN, 32);
     round_trip(&I512::MAX, 64);
 }

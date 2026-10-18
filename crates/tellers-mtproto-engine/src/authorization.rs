@@ -29,6 +29,10 @@ pub trait AuthorizationAdapter {
     fn accept_dh(&mut self, response: &[u8]) -> Result<Vec<u8>, Error>;
     /// Validate completion and return `(auth_key, server_salt)`.
     fn accept_authorization(&mut self, response: &[u8]) -> Result<(Vec<u8>, i64), Error>;
+    /// Clock correction derived from authenticated server DH data.
+    fn time_offset_micros(&self) -> Option<i64> {
+        None
+    }
 }
 
 /// Ordered authorization orchestrator independent of a Telegram declaration layer.
@@ -47,6 +51,10 @@ impl<A: AuthorizationAdapter> Authorization<A> {
     /// Current state.
     pub const fn phase(&self) -> AuthorizationPhase {
         self.phase
+    }
+    /// Recover exchange-specific metadata after completion.
+    pub fn into_adapter(self) -> A {
+        self.adapter
     }
     /// Begin authorization.
     pub fn start(&mut self) -> Result<Vec<u8>, Error> {
@@ -71,6 +79,10 @@ impl<A: AuthorizationAdapter> Authorization<A> {
             }
             AuthorizationPhase::WaitingForDh => {
                 let body = self.adapter.accept_dh(response)?;
+                if let Some(offset) = self.adapter.time_offset_micros() {
+                    session.time_offset_micros = offset;
+                    session.last_message_id = 0;
+                }
                 self.phase = AuthorizationPhase::WaitingForAcceptance;
                 Ok(Some(body))
             }
@@ -78,6 +90,12 @@ impl<A: AuthorizationAdapter> Authorization<A> {
                 let (key, salt) = self.adapter.accept_authorization(response)?;
                 session.set_auth_key(key)?;
                 session.server_salt = salt;
+                if let Some(offset) = self.adapter.time_offset_micros() {
+                    session.time_offset_micros = offset;
+                    // Unencrypted IDs generated using an incorrect host clock must
+                    // not force the new key's encrypted IDs into the future.
+                    session.last_message_id = 0;
+                }
                 self.phase = AuthorizationPhase::Authorized;
                 Ok(None)
             }

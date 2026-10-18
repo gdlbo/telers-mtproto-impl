@@ -7,6 +7,44 @@ use tellers_mtproto_session::{
     Clock, Error as SessionError, RandomSource, ReceivedMessageResult, Snapshot,
 };
 struct C(i64);
+
+#[test]
+fn authorization_corrects_dh_clock_before_next_plain_and_new_key_messages() {
+    use crate::authorization::{Authorization, AuthorizationAdapter};
+    struct Adapter(bool);
+    impl AuthorizationAdapter for Adapter {
+        fn request_parameters(&mut self) -> Result<Vec<u8>, Error> { Ok(vec![]) }
+        fn accept_parameters(&mut self, _: &[u8]) -> Result<Vec<u8>, Error> { Ok(vec![]) }
+        fn accept_dh(&mut self, _: &[u8]) -> Result<Vec<u8>, Error> {
+            self.0 = true;
+            Ok(vec![])
+        }
+        fn accept_authorization(&mut self, _: &[u8]) -> Result<(Vec<u8>, i64), Error> {
+            Ok((vec![1; 256], 7))
+        }
+        fn time_offset_micros(&self) -> Option<i64> {
+            self.0.then_some(-100_000_000_000_000)
+        }
+    }
+    let clock = C(1_800_000_000_000_000);
+    let mut session = Snapshot::new(2, &mut R).unwrap();
+    let old = session.next_message_id(&clock).unwrap();
+    let mut exchange = Authorization::new(Adapter(false));
+    exchange.start().unwrap();
+    exchange.advance(&[], &mut session).unwrap();
+    assert_eq!(session.time_offset_micros, 0);
+    exchange.advance(&[], &mut session).unwrap();
+    assert!(session.auth_key.is_none());
+    assert_eq!(session.time_offset_micros, -100_000_000_000_000);
+    let corrected = session.next_message_id(&clock).unwrap();
+    assert_eq!(corrected >> 32, 1_700_000_000);
+    assert!(corrected < old);
+    exchange.advance(&[], &mut session).unwrap();
+    assert_eq!(session.auth_key.as_deref(), Some(&[1_u8; 256][..]));
+    assert_eq!(session.server_salt, 7);
+    assert_eq!(session.next_message_id(&clock).unwrap() >> 32, 1_700_000_000);
+    assert!(exchange.into_adapter().0);
+}
 impl Clock for C {
     fn unix_micros(&self) -> i64 {
         self.0

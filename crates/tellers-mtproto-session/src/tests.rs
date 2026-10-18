@@ -16,6 +16,29 @@ impl RandomSource for FixedRandom {
     }
 }
 #[test]
+fn key_retirement_is_redacted_and_preserves_identity_and_other_owned_copies() {
+    let mut state = Snapshot::new(2, &mut FixedRandom(7)).unwrap();
+    state.set_auth_key(vec![5; 256]).unwrap();
+    state.content_sequence = 11;
+    state.acknowledge(5).unwrap();
+    let identity = state.session_id;
+    let original = state.clone();
+    assert_eq!(format!("{state:?}"), "Snapshot { .. }");
+    assert!(matches!(state.set_auth_key(vec![9; 8]), Err(Error::InvalidAuthKey(8))));
+    assert_eq!(state, original);
+    state.set_auth_key(vec![6; 256]).unwrap();
+    assert_eq!(state.auth_key.as_deref(), Some(&[6; 256][..]));
+    assert_eq!(original.auth_key.as_deref(), Some(&[5; 256][..]));
+    state.clear_auth_key();
+    assert!(state.auth_key.is_none());
+    assert_eq!(state.session_id, identity);
+    assert_eq!(state.content_sequence, 11);
+    assert_eq!(state.take_acknowledgements(10), vec![5]);
+    assert_eq!(format!("{state:?}"), "Snapshot { .. }");
+    assert_eq!(original.auth_key.as_deref(), Some(&[5; 256][..]));
+}
+
+#[test]
 fn ids_and_sequences_are_monotonic() {
     let mut state = Snapshot::new(2, &mut FixedRandom(7)).unwrap();
     let clock = FixedClock(1_700_000_000_000_000);

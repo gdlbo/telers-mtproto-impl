@@ -1,6 +1,7 @@
 //! Persistable session snapshot and checked transitions.
 
 use crate::{Clock, Error, RECEIVED_MESSAGE_WINDOW, RandomSource, ReceivedMessageResult};
+use zeroize::Zeroize;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -14,7 +15,7 @@ pub struct ReconnectState {
 }
 
 /// Stable representation of session state.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Snapshot {
     /// Data-center identifier.
     pub dc_id: i32,
@@ -37,6 +38,18 @@ pub struct Snapshot {
     pub received_message_ids: BTreeMap<i64, bool>,
     /// Reconnection policy state.
     pub reconnect: ReconnectState,
+}
+
+impl std::fmt::Debug for Snapshot {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Snapshot { .. }")
+    }
+}
+
+impl Drop for Snapshot {
+    fn drop(&mut self) {
+        self.clear_auth_key();
+    }
 }
 
 impl Snapshot {
@@ -85,11 +98,19 @@ impl Snapshot {
         Ok(())
     }
 
-    /// Install a newly negotiated authorization key.
-    pub fn set_auth_key(&mut self, key: Vec<u8>) -> Result<(), Error> {
+    /// Retire the owned key without changing session identity or protocol state.
+    pub fn clear_auth_key(&mut self) {
+        self.auth_key.zeroize();
+    }
+
+    /// Install a newly negotiated authorization key, wiping the replaced key.
+    pub fn set_auth_key(&mut self, mut key: Vec<u8>) -> Result<(), Error> {
         if key.len() != 256 {
-            return Err(Error::InvalidAuthKey(key.len()));
+            let length = key.len();
+            key.zeroize();
+            return Err(Error::InvalidAuthKey(length));
         }
+        self.clear_auth_key();
         self.auth_key = Some(key);
         Ok(())
     }

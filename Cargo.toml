@@ -27,6 +27,7 @@ sha2 = "0.11"
 subtle = "2.6"
 tellers-mtproto = { path = "crates/tellers-mtproto" }
 thiserror = "2"
+zeroize = "1"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

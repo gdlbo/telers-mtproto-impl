@@ -1,6 +1,6 @@
 [package]
 name = "tellers-mtproto"
-version = "0.2.0+layer.230"
+version = "0.2.0+layer.231"
 edition = "2024"
 license = "MPL-2.0"
 rust-version = "1.85"
@@ -8,14 +8,15 @@ description = "Fork of tellers-tl mtproto-types"
 publish = false
 
 [features]
-default = ["layer-230"]
+default = ["layer-231"]
 serde = ["dep:serde", "bnum/serde"]
 bon = ["dep:bon"]
 layer-223 = []
 layer-229 = []
 layer-230 = []
-all-layers = ["layer-223", "layer-229", "layer-230"]
-secret-chat = ["layer-230"]
+layer-231 = []
+all-layers = ["layer-223", "layer-229", "layer-230", "layer-231"]
+secret-chat = ["layer-231"]
 tracing = ["dep:tracing"]
 dangerous-unredacted-logging = ["tracing"]
 
